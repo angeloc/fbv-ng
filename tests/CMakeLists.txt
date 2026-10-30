@@ -44,6 +44,10 @@ add_executable(robustness_test robustness_test.cpp)
 target_link_libraries(robustness_test PRIVATE fbvng_core)
 add_test(NAME robustness COMMAND robustness_test ${image_paths})
 
+add_executable(fuzz_replay ${PROJECT_SOURCE_DIR}/fuzz/decode_fuzzer.cpp ${PROJECT_SOURCE_DIR}/fuzz/replay.cpp)
+target_link_libraries(fuzz_replay PRIVATE fbvng_core)
+add_test(NAME fuzz_replay COMMAND fuzz_replay ${image_paths})
+
 # https://github.com/peterdn/gif-test-suite, expected frames are PNG
 if(FBVNG_WITH_GIF AND FBVNG_WITH_PNG)
 	add_executable(gif_suite_test gif_suite_test.cpp)
