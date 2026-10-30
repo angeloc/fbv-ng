@@ -13,6 +13,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # One switch per image format, to build only the decoders a system needs
 option(FBVNG_WITH_BMP "BMP support (built in)" ON)
 option(FBVNG_WITH_PNG "PNG support (libpng)" ON)
+option(FBVNG_WITH_JPEG "JPEG support (libjpeg)" ON)
 option(FBVNG_HARDENING "Compiler and linker hardening" ON)
 option(FBVNG_SANITIZE "Build with AddressSanitizer and UndefinedBehaviorSanitizer" OFF)
 
@@ -101,6 +102,13 @@ if(FBVNG_WITH_PNG)
 	target_sources(fbvng_core PRIVATE src/png.cpp)
 	target_link_libraries(fbvng_core PRIVATE PNG::PNG)
 	target_compile_definitions(fbvng_core PUBLIC FBVNG_HAVE_PNG)
+endif()
+
+if(FBVNG_WITH_JPEG)
+	find_package(JPEG REQUIRED)
+	target_sources(fbvng_core PRIVATE src/jpeg.cpp)
+	target_link_libraries(fbvng_core PRIVATE JPEG::JPEG)
+	target_compile_definitions(fbvng_core PUBLIC FBVNG_HAVE_JPEG)
 endif()
 
 set(formats)
