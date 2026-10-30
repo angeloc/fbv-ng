@@ -1,0 +1,95 @@
+.TH FBV 1 "2026-10-30" "fbv-ng 2.0.0"
+.SH NAME
+fbv \- framebuffer image viewer
+.SH SYNOPSIS
+.B fbv
+[\fIoptions\fR] \fIimage\fR...
+.SH DESCRIPTION
+.B fbv
+shows BMP, PNG, JPEG and GIF images, including animated GIFs, on a Linux
+framebuffer console. The formats available depend on the build.
+.SH OPTIONS
+.TP
+.BR \-h ", " \-\-help
+Show the help.
+.TP
+.BR \-a ", " \-\-alpha
+Blend the image with the screen using its alpha channel.
+.TP
+.BR \-c ", " \-\-noclear
+Do not clear the screen before and after displaying the image.
+.TP
+.BR \-u ", " \-\-unhide
+Do not hide the cursor while displaying the image.
+.TP
+.BR \-i ", " \-\-noinfo
+Do not show image information.
+.TP
+.BR \-f ", " \-\-shrink
+Shrink the image to fit onto the screen if necessary.
+.TP
+.BR \-k ", " \-\-colorshrink
+Shrink with a color averaging filter.
+.TP
+.BR \-e ", " \-\-enlarge
+Enlarge the image to fit the whole screen if necessary.
+.TP
+.BR \-l ", " \-\-widthonly
+When fitting, fit horizontally only.
+.TP
+.BR \-t ", " \-\-heightonly
+When fitting, fit vertically only.
+.TP
+.BR \-x ", " \-\-smartfit " \fIpercent\fR"
+Cover the whole screen if less than \fIpercent\fR of the image is cut off.
+.TP
+.BR \-r ", " \-\-ignore\-aspect
+Ignore the image aspect while resizing.
+.TP
+.BR \-s ", " \-\-delay " \fIdelay\fR"
+Slideshow: show each image for \fIdelay\fR tenths of a second. A key press
+stops the timer for the current image.
+.TP
+.BR \-n ", " \-\-imagename " \fInames\fR"
+Names shown in the image information, separated by `^' for several files.
+.TP
+.BR \-o ", " \-\-orientation " \fIo\fR"
+Initial rotation: 0 none, 1 90 degrees, 2 180 degrees, 3 270 degrees.
+.TP
+.BR \-y ", " \-\-skiptty
+Do not read keys: show the images and continue, playing animations to their
+end and waiting for the slideshow delay.
+.SH KEYS
+.TS
+l l.
+r	Redraw the image
+< or ,	Previous image
+> or .	Next image
+space, enter	Next image
+a, d, w, x	Scroll the image (cursor keys also do that)
+f	Toggle shrinking
+k	Toggle shrinking quality
+e	Toggle enlarging
+l	Toggle fitting the image horizontally
+t	Toggle fitting the image vertically
+i	Toggle respecting the image aspect
++, -, 0	Increase, decrease and reset zoom
+n	Rotate the image 90 degrees left
+m	Rotate the image 90 degrees right
+p	Disable all transformations
+h	Help and image information
+q	Quit
+.TE
+.SH ANIMATION
+Animated GIFs play with their frame delays, delays below 20 ms count as
+100 ms. The loop count stored in the file is honoured; a file without one
+plays once. Without a terminal on standard input, the viewer moves to the
+next image when the animation ends.
+.SH ENVIRONMENT
+.TP
+.B FRAMEBUFFER
+Framebuffer device, /dev/fb0 when unset.
+.SH EXIT STATUS
+0 on success, 1 on errors, 128 plus the signal number when interrupted.
+.SH AUTHORS
+fbv by Mateusz Golicz and Tomasz Sterna; fbv-ng by Angelo Compagnucci.

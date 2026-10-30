@@ -128,3 +128,19 @@ foreach(format BMP PNG JPEG GIF)
 endforeach()
 string(REPLACE ";" " " formats "${formats}")
 message(STATUS "fbv-ng: image formats: ${formats}")
+
+# The viewer drives the Linux framebuffer and virtual terminals.
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+	# Same command line as fbv, so it installs under the same name
+	add_executable(fbv
+		src/framebuffer.cpp
+		src/main.cpp
+		src/terminal.cpp
+		src/viewer.cpp)
+	target_link_libraries(fbv PRIVATE fbvng_core)
+
+	install(TARGETS fbv RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+	install(FILES fbv.1 DESTINATION ${CMAKE_INSTALL_MANDIR}/man1)
+else()
+	message(STATUS "fbv-ng: ${CMAKE_SYSTEM_NAME} has no Linux framebuffer, building the decoders only")
+endif()
