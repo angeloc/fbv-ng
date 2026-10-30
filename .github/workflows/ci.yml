@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler: [g++, clang++]
+        config:
+          - name: all formats, sanitizers
+            flags: -DFBVNG_SANITIZE=ON -DCMAKE_BUILD_TYPE=Debug
+          - name: all formats, release
+            flags: -DCMAKE_BUILD_TYPE=Release
+          - name: bmp only
+            flags: -DCMAKE_BUILD_TYPE=MinSizeRel -DFBVNG_WITH_PNG=OFF -DFBVNG_WITH_JPEG=OFF -DFBVNG_WITH_GIF=OFF
+    name: ${{ matrix.compiler }}, ${{ matrix.config.name }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Dependencies
+        run: sudo apt-get update && sudo apt-get install -y cmake libpng-dev libjpeg-dev libgif-dev
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_CXX_COMPILER=${{ matrix.compiler }} ${{ matrix.config.flags }}
+      - name: Build
+        run: cmake --build build -j
+      - name: Test
+        run: ctest --test-dir build --output-on-failure -j
+
+  fuzz:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Dependencies
+        run: sudo apt-get update && sudo apt-get install -y cmake clang libpng-dev libjpeg-dev libgif-dev
+      - name: Build
+        run: |
+          cmake -S . -B build -DCMAKE_CXX_COMPILER=clang++ -DFBVNG_FUZZ=ON -DFBVNG_SANITIZE=ON -DBUILD_TESTING=OFF
+          cmake --build build --target fbv-ng-fuzz -j
+      - name: Fuzz
+        run: |
+          mkdir corpus
+          cp tests/data/*.{bmp,png,jpg,gif} tests/gif-test-suite/*.gif corpus/
+          ./build/fbv-ng-fuzz -max_total_time=120 -max_len=65536 corpus
