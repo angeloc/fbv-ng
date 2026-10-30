@@ -43,3 +43,39 @@ list(TRANSFORM images PREPEND ${data}/ OUTPUT_VARIABLE image_paths)
 add_executable(robustness_test robustness_test.cpp)
 target_link_libraries(robustness_test PRIVATE fbvng_core)
 add_test(NAME robustness COMMAND robustness_test ${image_paths})
+
+# https://github.com/peterdn/gif-test-suite, expected frames are PNG
+if(FBVNG_WITH_GIF AND FBVNG_WITH_PNG)
+	add_executable(gif_suite_test gif_suite_test.cpp)
+	target_link_libraries(gif_suite_test PRIVATE fbvng_core)
+
+	set(second 1000,1000,1000,1000)
+	set(suite_cases
+		"static_nontransparent|0|static_nontransparent"
+		"static_transparent|0|static_transparent"
+		"animated_noloop|1000,1000,1000,0"
+		"animated_loop|${second}"
+		"animated_loop_interlaced|${second}"
+		"animated_loop_variable_delay|1000,1000,100,1000"
+		"animated_transparent_loop|${second}"
+		"animated_transparent_restoreprev_loop|${second}"
+		"animated_transparent_firstframerestoreprev_loop|${second}"
+		"animated_transparent_frame_norestore_loop|${second}"
+		"animated_transparent_frame_restorebackground_loop|${second}"
+		"animated_transparent_frame_restoreprev_loop|${second}"
+		"animated_transparent_loop_frames_out_of_bounds|${second}")
+	foreach(case IN LISTS suite_cases)
+		string(REPLACE "|" ";" fields "${case}")
+		list(GET fields 0 name)
+		list(GET fields 1 delays)
+		list(LENGTH fields n)
+		if(n GREATER 2)
+			set(frames ${suite}/frames/${name}.png)
+		else()
+			set(frames ${suite}/frames/${name}-0.png ${suite}/frames/${name}-1.png
+				${suite}/frames/${name}-2.png ${suite}/frames/${name}-3.png)
+		endif()
+		add_test(NAME gif-suite/${name}
+			COMMAND gif_suite_test ${suite}/${name}.gif ${delays} ${frames})
+	endforeach()
+endif()
