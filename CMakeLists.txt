@@ -89,7 +89,8 @@ endif()
 # They only need a POSIX C++20 toolchain.
 add_library(fbvng_core STATIC
 	src/decode.cpp
-	src/image.cpp)
+	src/image.cpp
+	src/transform.cpp)
 target_include_directories(fbvng_core PUBLIC src)
 target_link_libraries(fbvng_core PUBLIC fbvng_flags)
 
