@@ -19,6 +19,7 @@ option(FBVNG_HARDENING "Compiler and linker hardening" ON)
 option(FBVNG_SANITIZE "Build with AddressSanitizer and UndefinedBehaviorSanitizer" OFF)
 
 include(CheckCXXCompilerFlag)
+include(CTest)
 include(GNUInstallDirs)
 if(NOT CMAKE_VERSION VERSION_LESS 3.18)
 	include(CheckLinkerFlag)
@@ -143,4 +144,9 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
 	install(FILES fbv.1 DESTINATION ${CMAKE_INSTALL_MANDIR}/man1)
 else()
 	message(STATUS "fbv-ng: ${CMAKE_SYSTEM_NAME} has no Linux framebuffer, building the decoders only")
+endif()
+
+# Test programs run through CMAKE_CROSSCOMPILING_EMULATOR when cross building.
+if(BUILD_TESTING)
+	add_subdirectory(tests)
 endif()
