@@ -8,6 +8,11 @@ fbv \- framebuffer image viewer
 .B fbv
 shows BMP, PNG, JPEG and GIF images, including animated GIFs, on a Linux
 framebuffer console. The formats available depend on the build.
+.PP
+It draws through the framebuffer device, so the kernel must provide one: a
+DRM/KMS driver with fbdev emulation (CONFIG_DRM_FBDEV_EMULATION and
+CONFIG_FB_DEVICE) or a classic fbdev driver. The user needs write access to the
+device, usually through the video group.
 .SH OPTIONS
 .TP
 .BR \-h ", " \-\-help
