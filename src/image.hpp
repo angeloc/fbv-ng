@@ -41,8 +41,18 @@ public:
 	// animation is over.
 	virtual std::chrono::milliseconds delay() const = 0;
 
+	// The current frame's own duration, also after the animation is over.
+	virtual std::chrono::milliseconds frame_delay() const = 0;
+
+	virtual std::size_t frame_count() const = 0;
+	virtual std::size_t index() const = 0;
+
 	// Advances to the next frame and stores it in out.
 	virtual void next(Image &out) = 0;
+
+	// Moves to the given frame and stores it in out, throws
+	// std::out_of_range for a frame past the end.
+	virtual void seek(std::size_t frame, Image &out) = 0;
 };
 
 struct Picture {

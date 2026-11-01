@@ -5,6 +5,7 @@
 #include <array>
 #include <cstring>
 #include <gif_lib.h>
+#include <stdexcept>
 
 namespace fbvng {
 
@@ -56,10 +57,18 @@ public:
 			return {};
 		if (loops_ && loop_ + 1 >= loops_ && index_ + 1 == frames_.size())
 			return {};
+		return frame_delay();
+	}
+
+	std::chrono::milliseconds frame_delay() const override
+	{
 		const int d = frames_[index_].delay;
 		// Like browsers, treat 0 and 1 as 10.
 		return std::chrono::milliseconds((d < 2 ? 10 : d) * 10);
 	}
+
+	std::size_t frame_count() const override { return frames_.size(); }
+	std::size_t index() const override { return index_; }
 
 	void next(Image &out) override
 	{
@@ -70,6 +79,25 @@ public:
 			reset();
 		}
 		draw(index_);
+		current(out);
+	}
+
+	void seek(std::size_t frame, Image &out) override
+	{
+		if (frame >= frames_.size())
+			throw std::out_of_range("frame out of range");
+		// Frames build on each other, going back replays from the start.
+		if (frame < index_) {
+			index_ = 0;
+			saved_rgb_.clear();
+			saved_mask_.clear();
+			reset();
+			draw(0);
+		}
+		while (index_ < frame) {
+			dispose(index_);
+			draw(++index_);
+		}
 		current(out);
 	}
 
