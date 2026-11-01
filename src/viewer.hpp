@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #pragma once
 
+#include "control.hpp"
 #include "framebuffer.hpp"
 #include "image.hpp"
 #include "terminal.hpp"
@@ -25,18 +26,19 @@ struct Options {
 	int orientation = 0;
 	bool skip_tty = false;
 	bool graphics = false;
+	std::string control;  // control socket path, empty for none
 };
 
 enum class Navigation { quit, next, previous };
 
 class Viewer {
 public:
-	Viewer(const Options &options, Framebuffer &fb, Terminal &term)
-		: opt_(options), fb_(fb), term_(term)
+	Viewer(const Options &options, Framebuffer &fb, Terminal &term, ControlServer *control)
+		: opt_(options), fb_(fb), term_(term), control_(control)
 	{
 	}
 
-	Navigation show(const std::string &path, const std::string &name);
+	Navigation show(const std::string &path, const std::string &display_name);
 
 private:
 	void draw(const Image &img, int pan_x, int pan_y, int offs_x, int offs_y);
@@ -44,6 +46,7 @@ private:
 	const Options &opt_;
 	Framebuffer &fb_;
 	Terminal &term_;
+	ControlServer *control_;
 	std::vector<std::uint8_t> background_;
 };
 

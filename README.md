@@ -107,6 +107,31 @@ fbv [options] image...
 
 Run `fbv -h` or see `man fbv` for the options and keys.
 
+## Control socket
+
+With `--control <path>` fbv listens on a Unix socket and keeps running until told to quit, so
+other programs can drive the display, e.g. a boot splash:
+
+```
+fbv -y -c -i -g --control /run/fbv.sock boot.gif &
+echo "progress 40" | socat - UNIX-CONNECT:/run/fbv.sock
+```
+
+Each command is one line, answered by `ok` or `error <reason>`:
+
+| Command            | Effect                                                            |
+|--------------------|-------------------------------------------------------------------|
+| `ping`             | check that fbv is alive                                           |
+| `pause`, `resume`  | stop and restart the animation; `resume` also ends a held frame   |
+| `frame <n>`        | show frame n (from 0) and hold it                                 |
+| `progress <0-100>` | step to the frame matching the percentage at the animation's pace |
+| `load <file>`      | show another image or animation, keeping the current one on error |
+| `status`           | `ok frame=<n> frames=<count> paused=<0\|1>`                       |
+| `quit [retain]`    | exit; `retain` leaves the console in graphics mode                |
+
+`-g` switches the console to graphics mode while fbv runs, so no kernel text or cursor is drawn
+over the image. The socket is created for its owner only.
+
 ## Testing
 
 `ctest` runs:

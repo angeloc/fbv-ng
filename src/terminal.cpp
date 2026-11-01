@@ -180,11 +180,4 @@ std::optional<int> Terminal::read_key(std::optional<std::chrono::milliseconds> t
 	return std::nullopt;
 }
 
-void Terminal::sleep(std::chrono::milliseconds duration)
-{
-	const auto ms = std::max<std::chrono::milliseconds::rep>(duration.count(), 0);
-	timespec ts{static_cast<time_t>(ms / 1000), static_cast<long>(ms % 1000 * 1000000)};
-	::nanosleep(&ts, nullptr);
-}
-
 } // namespace fbvng

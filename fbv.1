@@ -65,6 +65,11 @@ Initial rotation: 0 none, 1 90 degrees, 2 180 degrees, 3 270 degrees.
 Do not read keys: show the images and continue, playing animations to their
 end and waiting for the slideshow delay.
 .TP
+.BR \-C ", " \-\-control " \fIpath\fR"
+Accept commands on the Unix socket \fIpath\fR, see CONTROL. The viewer then
+keeps running until it gets \fBquit\fR. The socket is only accessible to its
+owner, and a socket another fbv still serves is not taken over.
+.TP
 .BR \-g ", " \-\-graphics
 Switch the active console to graphics mode while running, so the kernel draws
 no text or cursor over the image.
@@ -94,6 +99,41 @@ Animated GIFs play with their frame delays, delays below 20 ms count as
 100 ms. The loop count stored in the file is honoured; a file without one
 plays once. Without a terminal on standard input, the viewer moves to the
 next image when the animation ends.
+.SH CONTROL
+Each line sent to the control socket is one command, answered by one line:
+\fBok\fR, possibly followed by values, or \fBerror\fR and a reason.
+.TP
+.B ping
+Check that the viewer is alive.
+.TP
+.BR pause ", " resume
+Stop and restart the animation clock. \fBresume\fR also returns to free
+playback after \fBframe\fR or \fBprogress\fR.
+.TP
+.BI frame " n"
+Show frame \fIn\fR of the animation, counting from 0, and hold it.
+.TP
+.BI progress " percent"
+Move to the frame matching \fIpercent\fR (0 to 100, decimals allowed) of
+the animation and hold it there. Forward moves step through the frames at the
+animation's own pace, backward moves jump.
+.TP
+.BI load " file"
+Show another image or animation; on error the current one stays.
+.TP
+.B status
+Reply \fBok frame=\fIn\fB frames=\fIcount\fB paused=\fI0|1\fR.
+.TP
+.BR quit " [" retain ]
+Exit, leaving the image on the framebuffer. With \fBretain\fR the console
+stays in graphics mode, for a program taking over the display.
+.PP
+For example, with socat:
+.PP
+.nf
+fbv -y -c -i -g --control /run/fbv.sock boot.gif &
+echo "progress 40" | socat - UNIX-CONNECT:/run/fbv.sock
+.fi
 .SH ENVIRONMENT
 .TP
 .B FRAMEBUFFER

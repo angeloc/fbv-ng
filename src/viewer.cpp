@@ -4,8 +4,12 @@
 #include "transform.hpp"
 
 #include <algorithm>
+#include <climits>
+#include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <optional>
+#include <poll.h>
 #include <unistd.h>
 
 namespace fbvng {
@@ -172,7 +176,7 @@ void Viewer::draw(const Image &img, int pan_x, int pan_y, int offs_x, int offs_y
 	fb_.write(offs_x, offs_y, vw, vh, out);
 }
 
-Navigation Viewer::show(const std::string &path, const std::string &name)
+Navigation Viewer::show(const std::string &path, const std::string &display_name)
 {
 	Picture pic;
 	try {
@@ -182,37 +186,142 @@ Navigation Viewer::show(const std::string &path, const std::string &name)
 		return Navigation::next;
 	}
 
-	Image frame = std::move(pic.image);
-	if (!opt_.alpha)
-		frame.alpha.clear();
-
 	const int sw = fb_.width(), sh = fb_.height();
-	View v{opt_.shrink != 0, opt_.shrink == 2, opt_.enlarge, opt_.ignore_aspect,
-	       opt_.width_only, opt_.height_only, opt_.orientation};
-
-	if (opt_.smartfit >= 0) {
-		const std::int64_t xs = frame.width, ys = frame.height;
-		v.shrink = v.enlarge = true;
-		if (std::int64_t{sw} * ys > xs * sh) {
-			if (opt_.smartfit > 100 - 100 * xs * sh / (ys * sw)) {
-				v.width_only = true;
-				v.height_only = false;
-			}
-		} else if (opt_.smartfit > 100 - 100 * ys * sw / (xs * sh)) {
-			v.width_only = false;
-			v.height_only = true;
-		}
-	}
-
-	Image shown;
+	std::string name = display_name;
+	Image frame, shown;
+	View v{};
+	FrameSource *anim = nullptr;
 	int pan_x = 0, pan_y = 0, offs_x = 0, offs_y = 0;
 	bool retransform = true, reframe = false, refresh = true, place = true, noshow = false;
+	// Animation state: paused stops the clock, target makes it step to a
+	// frame and hold there.
+	bool paused = false;
+	std::optional<std::size_t> target;
 	int delay = opt_.delay;
-	const auto start = Clock::now();
-	const auto delay_end = start + milliseconds(delay * 100);
-	auto animating = [&] { return pic.animation && pic.animation->delay().count() > 0; };
-	auto frame_end = start + (animating() ? pic.animation->delay() : milliseconds{});
+	const auto delay_end = Clock::now() + milliseconds(delay * 100);
+	Clock::time_point frame_end;
 	const bool keys = term_.interactive() && !opt_.skip_tty;
+
+	auto stepping = [&] {
+		return anim && !paused && (target ? anim->index() != *target : anim->delay().count() > 0);
+	};
+	auto step_delay = [&] { return target ? anim->frame_delay() : anim->delay(); };
+
+	// Starts showing pic, also when a control command loads another file.
+	auto begin = [&] {
+		frame = std::move(pic.image);
+		if (!opt_.alpha)
+			frame.alpha.clear();
+		anim = pic.animation.get();
+		v = View{opt_.shrink != 0, opt_.shrink == 2, opt_.enlarge, opt_.ignore_aspect,
+			 opt_.width_only, opt_.height_only, opt_.orientation};
+
+		if (opt_.smartfit >= 0) {
+			const std::int64_t xs = frame.width, ys = frame.height;
+			v.shrink = v.enlarge = true;
+			if (std::int64_t{sw} * ys > xs * sh) {
+				if (opt_.smartfit > 100 - 100 * xs * sh / (ys * sw)) {
+					v.width_only = true;
+					v.height_only = false;
+				}
+			} else if (opt_.smartfit > 100 - 100 * ys * sw / (xs * sh)) {
+				v.width_only = false;
+				v.height_only = true;
+			}
+		}
+		retransform = refresh = place = true;
+		paused = false;
+		target.reset();
+		frame_end = Clock::now() + (stepping() ? step_delay() : milliseconds{});
+	};
+
+	auto set_frame = [&](std::size_t n) {
+		anim->seek(n, frame);
+		if (!opt_.alpha)
+			frame.alpha.clear();
+		reframe = true;
+	};
+
+	// Returns where to go when the command ends this image.
+	auto command = [&](const Request &req) -> std::optional<Navigation> {
+		auto ok = [&](const std::string &extra) {
+			control_->reply(req.fd, extra.empty() ? "ok" : "ok " + extra);
+		};
+		auto error = [&](const std::string &msg) { control_->reply(req.fd, "error " + msg); };
+		const auto now = Clock::now();
+
+		if (req.verb == "ping") {
+			ok({});
+		} else if (req.verb == "pause") {
+			paused = true;
+			ok({});
+		} else if (req.verb == "resume") {
+			paused = false;
+			target.reset();
+			frame_end = now + (stepping() ? step_delay() : milliseconds{});
+			ok({});
+		} else if (req.verb == "frame" || req.verb == "progress") {
+			const bool progress = req.verb == "progress";
+			char *end = nullptr;
+			const double value = std::strtod(req.argument.c_str(), &end);
+			if (req.argument.empty() || *end || !(value >= 0) || (progress && value > 100) ||
+			    (!progress && (value > 1e9 || value != std::floor(value)))) {
+				error(progress ? "progress needs a value from 0 to 100" : "frame needs a frame number");
+				return std::nullopt;
+			}
+			const std::size_t last = anim ? anim->frame_count() - 1 : 0;
+			const auto n = progress ? static_cast<std::size_t>(std::lround(value * static_cast<double>(last) / 100))
+						: static_cast<std::size_t>(value);
+			if (n > last) {
+				error("frame out of range");
+				return std::nullopt;
+			}
+			if (anim) {
+				paused = false;
+				target = n;
+				// Jumps for frame and for going back, steps forward at
+				// the animation's own pace for progress.
+				if (!progress || n < anim->index())
+					set_frame(n);
+				else if (stepping())
+					frame_end = now + step_delay();
+			}
+			ok({});
+		} else if (req.verb == "load") {
+			if (req.argument.empty()) {
+				error("load needs a file");
+				return std::nullopt;
+			}
+			try {
+				pic = decode_file(req.argument);
+			} catch (const DecodeError &e) {
+				error(req.argument + ": " + e.what());
+				return std::nullopt;
+			}
+			name = req.argument;
+			begin();
+			ok({});
+		} else if (req.verb == "status") {
+			char buf[96];
+			std::snprintf(buf, sizeof(buf), "frame=%zu frames=%zu paused=%d", anim ? anim->index() : 0,
+				      anim ? anim->frame_count() : 1, paused ? 1 : 0);
+			ok(buf);
+		} else if (req.verb == "quit") {
+			if (req.argument == "retain") {
+				term_.retain_graphics();
+			} else if (!req.argument.empty()) {
+				error("quit takes only retain");
+				return std::nullopt;
+			}
+			ok({});
+			return Navigation::quit;
+		} else {
+			error("unknown command " + req.verb);
+		}
+		return std::nullopt;
+	};
+
+	begin();
 
 	for (;;) {
 		if (quit_requested)
@@ -263,36 +372,53 @@ Navigation Viewer::show(const std::string &path, const std::string &name)
 		std::optional<Clock::time_point> deadline;
 		if (delay)
 			deadline = delay_end;
-		if (animating() && (!deadline || frame_end < *deadline))
+		if (stepping() && (!deadline || frame_end < *deadline))
 			deadline = frame_end;
 
-		std::optional<int> key;
-		if (keys) {
-			std::optional<milliseconds> timeout;
-			if (deadline)
-				timeout = std::chrono::ceil<milliseconds>(*deadline - Clock::now());
-			key = term_.read_key(timeout);
-		} else if (deadline) {
-			Terminal::sleep(std::chrono::ceil<milliseconds>(*deadline - Clock::now()));
-		} else {
+		// Keys, control commands and timers are all waited for here.
+		std::vector<pollfd> fds;
+		if (keys)
+			fds.push_back({STDIN_FILENO, POLLIN, 0});
+		if (control_)
+			control_->add_fds(fds);
+		if (fds.empty() && !deadline)
 			return Navigation::next;
-		}
+		int timeout = -1;
+		if (deadline)
+			timeout = static_cast<int>(std::clamp<milliseconds::rep>(
+				std::chrono::ceil<milliseconds>(*deadline - Clock::now()).count(), 0, INT_MAX));
+		const int ready = ::poll(fds.data(), fds.size(), timeout);
 
 		if (quit_requested)
 			return Navigation::quit;
+
+		std::optional<int> key;
+		if (ready > 0) {
+			if (keys && fds[0].revents)
+				key = term_.read_key(milliseconds{0});
+			if (control_)
+				for (const Request &req : control_->handle(fds))
+					if (const auto nav = command(req))
+						return *nav;
+		}
 
 		if (!key) {
 			const auto now = Clock::now();
 			if (delay && now >= delay_end)
 				return Navigation::next;
-			if (animating() && now >= frame_end) {
-				pic.animation->next(frame);
-				if (!opt_.alpha)
-					frame.alpha.clear();
-				frame_end += pic.animation->delay();
+			if (stepping() && now >= frame_end) {
+				if (target && *target < anim->index())
+					set_frame(*target);
+				else {
+					anim->next(frame);
+					if (!opt_.alpha)
+						frame.alpha.clear();
+					reframe = true;
+				}
+				const milliseconds step = stepping() ? step_delay() : milliseconds{};
+				frame_end += step;
 				if (frame_end < now)
-					frame_end = now + pic.animation->delay();
-				reframe = true;
+					frame_end = now + step;
 			}
 			continue;
 		}
