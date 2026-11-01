@@ -135,6 +135,7 @@ message(STATUS "fbv-ng: image formats: ${formats}")
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
 	# Same command line as fbv, so it installs under the same name
 	add_executable(fbv
+		src/control.cpp
 		src/framebuffer.cpp
 		src/main.cpp
 		src/terminal.cpp

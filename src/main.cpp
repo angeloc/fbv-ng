@@ -7,6 +7,7 @@
 #include <cstdlib>
 #include <exception>
 #include <getopt.h>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -35,6 +36,9 @@ void help(const char *name)
 		"  -n imagename(s)     Image name(s) shown in help, separated by '^'\n"
 		"  -o <mode>, --orientation <mode>  Show image in specific orientation (0 = no rotation, 1 = 90 degrees, 2 = 180 degrees, 3 = 270 degrees)\n"
 		"  -y, --skiptty       Shows the image only once and skips tty input mode.\n"
+		"  -C <path>, --control <path>  Accept commands on a Unix socket and run until 'quit'\n"
+		"                      (ping, pause, resume, frame <n>, progress <0-100>, load <file>,\n"
+		"                      status, quit [retain])\n"
 		"  -g, --graphics      Switch the console to graphics mode while running\n"
 		"Input keys:\n"
 		" r          : Redraw the image\n"
@@ -101,6 +105,7 @@ int main(int argc, char **argv)
 		{"orientation", required_argument, nullptr, 'o'},
 		{"skiptty", no_argument, nullptr, 'y'},
 		{"imagename", required_argument, nullptr, 'n'},
+		{"control", required_argument, nullptr, 'C'},
 		{"graphics", no_argument, nullptr, 'g'},
 		{nullptr, 0, nullptr, 0},
 	};
@@ -114,7 +119,7 @@ int main(int argc, char **argv)
 	Options opt;
 	const char *names = nullptr;
 	int c;
-	while ((c = getopt_long_only(argc, argv, "hn:cauifks:eltx:ro:yg", long_options, nullptr)) != -1) {
+	while ((c = getopt_long_only(argc, argv, "hn:cauifks:eltx:ro:yC:g", long_options, nullptr)) != -1) {
 		bool ok = true;
 		switch (c) {
 		case 'a': opt.alpha = true; break;
@@ -133,6 +138,7 @@ int main(int argc, char **argv)
 		case 'r': opt.ignore_aspect = true; break;
 		case 'o': ok = parse_int(optarg, 0, 3, opt.orientation); break;
 		case 'y': opt.skip_tty = true; break;
+		case 'C': opt.control = optarg; break;
 		case 'g': opt.graphics = true; break;
 		default: return 1;
 		}
@@ -153,8 +159,11 @@ int main(int argc, char **argv)
 	const char *device = std::getenv("FRAMEBUFFER");
 	try {
 		Framebuffer fb(device ? device : "/dev/fb0");
+		std::unique_ptr<ControlServer> control;
+		if (!opt.control.empty())
+			control = std::make_unique<ControlServer>(opt.control);
 		Terminal term(opt.hide_cursor, opt.graphics);
-		Viewer viewer(opt, fb, term);
+		Viewer viewer(opt, fb, term, control.get());
 
 		for (std::size_t i = 0; i < files.size();) {
 			const std::string &name = i < display_names.size() ? display_names[i] : files[i];

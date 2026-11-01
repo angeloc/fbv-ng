@@ -71,6 +71,11 @@ degrees.
 Do not read keys. fbv shows each image and moves on: it plays an animation to
 its end, and it waits for the slideshow delay.
 .TP
+.BR \-C ", " \-\-control " \fIpath\fR"
+Accept commands on the Unix socket \fIpath\fR, see CONTROL. fbv then keeps
+running until it receives \fBquit\fR. Only the owner of the socket can use
+it. If another fbv still serves this socket, fbv does not take it over.
+.TP
 .BR \-g ", " \-\-graphics
 Switch the active console to graphics mode while fbv runs. The kernel then
 draws no text and no cursor over the image.
@@ -104,6 +109,41 @@ plays once.
 .PP
 When standard input is not a terminal, fbv moves to the next image when the
 animation ends.
+.SH CONTROL
+Each line sent to the control socket is one command. fbv answers with one
+line: \fBok\fR, sometimes followed by values, or \fBerror\fR and a reason.
+.TP
+.B ping
+Check that the viewer is alive.
+.TP
+.BR pause ", " resume
+Stop and restart the animation clock. \fBresume\fR also goes back to normal
+playback after \fBframe\fR or \fBprogress\fR.
+.TP
+.BI frame " n"
+Show frame \fIn\fR of the animation, counting from 0, and hold it.
+.TP
+.BI progress " percent"
+Move to the frame that matches \fIpercent\fR of the animation (0 to 100,
+decimals allowed) and hold it. When moving forward, fbv steps through the
+frames at the pace of the animation. When moving backward, it jumps.
+.TP
+.BI load " file"
+Show another image or animation. If this fails, the current one stays.
+.TP
+.B status
+Reply \fBok frame=\fIn\fB frames=\fIcount\fB paused=\fI0|1\fR.
+.TP
+.BR quit " [" retain ]
+Exit and leave the image on the framebuffer. With \fBretain\fR, the console
+also stays in graphics mode, for a program that takes over the display.
+.PP
+For example, with socat:
+.PP
+.nf
+fbv -y -c -i -g --control /run/fbv.sock boot.gif &
+echo "progress 40" | socat - UNIX-CONNECT:/run/fbv.sock
+.fi
 .SH ENVIRONMENT
 .TP
 .B FRAMEBUFFER

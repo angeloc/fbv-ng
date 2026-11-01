@@ -30,9 +30,6 @@ public:
 	// Leaves the console in graphics mode on exit, keeping the image.
 	void retain_graphics();
 
-	// Sleeps up to duration, returns early on signals.
-	static void sleep(std::chrono::milliseconds duration);
-
 	// Waits for a key up to timeout, forever without one. Returns the
 	// key, -1 at end of input, nothing on timeout or signal.
 	std::optional<int> read_key(std::optional<std::chrono::milliseconds> timeout);
