@@ -163,7 +163,8 @@ Two things to know:
 - the [gif-test-suite](https://github.com/peterdn/gif-test-suite) by Peter Nelson;
 - unit tests of the transforms, the size limits and malformed headers;
 - truncated and corrupted copies of every test image;
-- the viewer on a fake framebuffer, at 32, 24 and 16 bpp.
+- the viewer on a fake framebuffer, at 32, 24 and 16 bpp;
+- the control socket commands, on a fake framebuffer.
 
 For the full check, build with `-DFBVNG_SANITIZE=ON`. To fuzz with Clang:
 

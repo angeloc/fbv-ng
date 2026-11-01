@@ -113,4 +113,10 @@ if(TARGET fbv AND NOT CMAKE_CROSSCOMPILING)
 		add_test(NAME viewer/${bpp}bpp/${image}${suffix}
 			COMMAND viewer_test $<TARGET_FILE:fbv> $<TARGET_FILE:fakefb> ${bpp} ${data}/${image} ${options})
 	endforeach()
+
+	if(FBVNG_WITH_GIF AND FBVNG_WITH_BMP)
+		add_executable(control_test control_test.cpp)
+		target_link_libraries(control_test PRIVATE fbvng_core)
+		add_test(NAME control COMMAND control_test $<TARGET_FILE:fbv> $<TARGET_FILE:fakefb> ${data})
+	endif()
 endif()
