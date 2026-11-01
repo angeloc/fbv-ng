@@ -3,9 +3,12 @@
 
 #include <algorithm>
 #include <cerrno>
+#include <fcntl.h>
+#include <linux/kd.h>
 #include <linux/vt.h>
 #include <sys/ioctl.h>
 #include <sys/select.h>
+#include <system_error>
 #include <termios.h>
 #include <unistd.h>
 
@@ -23,6 +26,9 @@ bool termios_saved = false;
 vt_mode saved_vt_mode;
 bool vt_mode_saved = false;
 bool cursor_hidden = false;
+int console_fd = -1;
+int saved_kd_mode;
+bool kd_mode_saved = false;
 
 constexpr char show_cursor[] = "\033[?25h";
 constexpr char hide_cursor[] = "\033[?25l";
@@ -49,6 +55,8 @@ void restore()
 		::tcsetattr(STDIN_FILENO, TCSANOW, &saved_termios);
 	if (cursor_hidden)
 		write_all(show_cursor, sizeof(show_cursor) - 1);
+	if (kd_mode_saved)
+		::ioctl(console_fd, KDSETMODE, saved_kd_mode);
 }
 
 void on_quit(int sig) { quit_requested = sig; }
@@ -85,9 +93,23 @@ void install(int sig, void (*handler)(int))
 
 } // namespace
 
-Terminal::Terminal(bool hide)
+Terminal::Terminal(bool hide, bool graphics)
 	: interactive_(::isatty(STDIN_FILENO))
 {
+	// First, so a failure leaves nothing else to undo.
+	if (graphics) {
+		console_fd = ::open("/dev/tty0", O_RDWR | O_CLOEXEC | O_NOCTTY);
+		if (console_fd < 0 || ::ioctl(console_fd, KDGETMODE, &saved_kd_mode) < 0 ||
+		    ::ioctl(console_fd, KDSETMODE, KD_GRAPHICS) < 0) {
+			const int err = errno;
+			if (console_fd >= 0)
+				::close(console_fd);
+			console_fd = -1;
+			throw std::system_error(err, std::generic_category(), "graphics mode on /dev/tty0");
+		}
+		kd_mode_saved = true;
+	}
+
 	for (int sig : {SIGINT, SIGTERM, SIGHUP, SIGQUIT})
 		install(sig, on_quit);
 	for (int sig : {SIGSEGV, SIGBUS, SIGABRT, SIGFPE, SIGILL})
@@ -123,7 +145,15 @@ Terminal::Terminal(bool hide)
 Terminal::~Terminal()
 {
 	restore();
-	vt_mode_saved = termios_saved = cursor_hidden = false;
+	vt_mode_saved = termios_saved = cursor_hidden = kd_mode_saved = false;
+	if (console_fd >= 0)
+		::close(console_fd);
+	console_fd = -1;
+}
+
+void Terminal::retain_graphics()
+{
+	kd_mode_saved = false;
 }
 
 std::optional<int> Terminal::read_key(std::optional<std::chrono::milliseconds> timeout)
