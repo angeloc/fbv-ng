@@ -24,6 +24,7 @@ struct Options {
 	int delay = 0;  // slideshow delay in tenths of a second
 	int orientation = 0;
 	bool skip_tty = false;
+	bool graphics = false;
 };
 
 enum class Navigation { quit, next, previous };

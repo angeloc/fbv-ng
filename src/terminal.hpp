@@ -13,11 +13,13 @@ extern volatile std::sig_atomic_t vt_active;
 extern volatile std::sig_atomic_t redraw_requested;
 
 // Console state for the lifetime of the viewer: raw keyboard input, hidden
-// cursor and VT switch handling, restored on destruction and on fatal
-// signals.
+// cursor, VT switch handling and optionally graphics mode, restored on
+// destruction and on fatal signals.
 class Terminal {
 public:
-	explicit Terminal(bool hide_cursor);
+	// graphics: switch the active console to KD_GRAPHICS, so the kernel
+	// draws no text over the framebuffer.
+	Terminal(bool hide_cursor, bool graphics);
 	~Terminal();
 	Terminal(const Terminal &) = delete;
 	Terminal &operator=(const Terminal &) = delete;
@@ -25,12 +27,15 @@ public:
 	// stdin is a terminal we can read keys from
 	bool interactive() const { return interactive_; }
 
-	// Waits for a key up to timeout, forever without one. Returns the
-	// key, -1 at end of input, nothing on timeout or signal.
-	std::optional<int> read_key(std::optional<std::chrono::milliseconds> timeout);
+	// Leaves the console in graphics mode on exit, keeping the image.
+	void retain_graphics();
 
 	// Sleeps up to duration, returns early on signals.
 	static void sleep(std::chrono::milliseconds duration);
+
+	// Waits for a key up to timeout, forever without one. Returns the
+	// key, -1 at end of input, nothing on timeout or signal.
+	std::optional<int> read_key(std::optional<std::chrono::milliseconds> timeout);
 
 private:
 	bool interactive_;
