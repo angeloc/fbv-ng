@@ -129,7 +129,8 @@ Run `fbv -h` or read `man fbv` for the options and the keys.
 ## Control socket
 
 With `--control <path>`, fbv listens on a Unix socket and keeps running until it is told to
-quit. Other programs can then drive the display, for example a boot splash:
+quit. Other programs can then drive the display. One example is a boot splash such as
+[yabi](https://github.com/angeloc/yabi), which uses the socket to follow the boot:
 
 ```
 fbv -y -c -i -g --control /run/fbv.sock boot.gif &
