@@ -79,6 +79,10 @@ it. If another fbv still serves this socket, fbv does not take it over.
 .BR \-g ", " \-\-graphics
 Switch the active console to graphics mode while fbv runs. The kernel then
 draws no text and no cursor over the image.
+.TP
+.BR \-p ", " \-\-paused
+Start animations paused on their first frame. They stay there until a control
+command (\fBresume\fR, \fBframe\fR, \fBprogress\fR) moves them.
 .SH KEYS
 .TS
 l l.

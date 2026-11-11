@@ -26,6 +26,7 @@ struct Options {
 	int orientation = 0;
 	bool skip_tty = false;
 	bool graphics = false;
+	bool paused = false;  // animations start paused on their first frame
 	std::string control;  // control socket path, empty for none
 };
 

@@ -149,10 +149,12 @@ Each command is one line. fbv answers `ok` or `error <reason>`.
 | `status`           | `ok frame=<n> frames=<count> paused=<0\|1>`                       |
 | `quit [retain]`    | exit; `retain` leaves the console in graphics mode                |
 
-Two things to know:
+Three things to know:
 
 - `-g` switches the console to graphics mode while fbv runs. So the kernel draws no text
   and no cursor over the image.
+- `-p` starts the animation paused on its first frame. So a progress animation does not
+  move before the first `progress` command.
 - The socket is created for its owner only.
 
 ## Testing

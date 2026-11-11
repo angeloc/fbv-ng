@@ -230,7 +230,7 @@ Navigation Viewer::show(const std::string &path, const std::string &display_name
 			}
 		}
 		retransform = refresh = place = true;
-		paused = false;
+		paused = opt_.paused;
 		target.reset();
 		frame_end = Clock::now() + (stepping() ? step_delay() : milliseconds{});
 	};

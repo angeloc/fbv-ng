@@ -146,6 +146,23 @@ int main(int argc, char **argv)
 	CHECK(send("quit") == "ok");
 	CHECK(wait_exit(pid) == 0);
 	CHECK(::access(socket_path.c_str(), F_OK) != 0);
+
+	// --paused holds the first frame until a command moves the animation.
+	const pid_t paused = spawn({fbv, "-y", "-i", "-c", "-u", "-p", "--control", socket_path, anim}, env);
+	up = false;
+	for (int i = 0; i < 200 && !up; i++) {
+		up = send("ping") == "ok";
+		if (!up)
+			std::this_thread::sleep_for(10ms);
+	}
+	CHECK(up);
+	std::this_thread::sleep_for(300ms);
+	CHECK(send("status") == "ok frame=0 frames=4 paused=1");
+	check_screen(fb, frame_of(anim, 0), "paused");
+	CHECK(send("progress 100") == "ok");
+	CHECK(wait_frame(3));
+	CHECK(send("quit") == "ok");
+	CHECK(wait_exit(paused) == 0);
 	::rmdir(dir);
 	return check_result();
 }

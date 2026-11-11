@@ -40,6 +40,7 @@ void help(const char *name)
 		"                      (ping, pause, resume, frame <n>, progress <0-100>, load <file>,\n"
 		"                      status, quit [retain])\n"
 		"  -g, --graphics      Switch the console to graphics mode while running\n"
+		"  -p, --paused        Start animations paused on their first frame\n"
 		"Input keys:\n"
 		" r          : Redraw the image\n"
 		" < or ,     : Previous image\n"
@@ -107,6 +108,7 @@ int main(int argc, char **argv)
 		{"imagename", required_argument, nullptr, 'n'},
 		{"control", required_argument, nullptr, 'C'},
 		{"graphics", no_argument, nullptr, 'g'},
+		{"paused", no_argument, nullptr, 'p'},
 		{nullptr, 0, nullptr, 0},
 	};
 
@@ -119,7 +121,7 @@ int main(int argc, char **argv)
 	Options opt;
 	const char *names = nullptr;
 	int c;
-	while ((c = getopt_long_only(argc, argv, "hn:cauifks:eltx:ro:yC:g", long_options, nullptr)) != -1) {
+	while ((c = getopt_long_only(argc, argv, "hn:cauifks:eltx:ro:yC:gp", long_options, nullptr)) != -1) {
 		bool ok = true;
 		switch (c) {
 		case 'a': opt.alpha = true; break;
@@ -140,6 +142,7 @@ int main(int argc, char **argv)
 		case 'y': opt.skip_tty = true; break;
 		case 'C': opt.control = optarg; break;
 		case 'g': opt.graphics = true; break;
+		case 'p': opt.paused = true; break;
 		default: return 1;
 		}
 		if (!ok) {
