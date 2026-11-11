@@ -105,6 +105,7 @@ public:
 
 	void next(Image &out) override
 	{
+		rebuild();
 		dispose(index_);
 		if (++index_ == frames_.size()) {
 			index_ = 0;
@@ -115,10 +116,20 @@ public:
 		current(out);
 	}
 
+	void skip() override
+	{
+		if (++index_ == frames_.size()) {
+			index_ = 0;
+			loop_++;
+		}
+		stale_ = true;
+	}
+
 	void seek(std::size_t frame, Image &out) override
 	{
 		if (frame >= frames_.size())
 			throw std::out_of_range("frame out of range");
+		rebuild();
 		// Frames build on each other, going back replays from the start.
 		if (frame < index_) {
 			index_ = 0;
@@ -147,6 +158,24 @@ private:
 	}
 
 	void reset() { fill(0, 0, width_, height_); }
+
+	// After skip(), decodes the frames again up to the current one.
+	void rebuild()
+	{
+		if (!stale_)
+			return;
+		stale_ = false;
+		const std::size_t target = index_;
+		index_ = 0;
+		saved_rgb_.clear();
+		saved_mask_.clear();
+		reset();
+		draw(0);
+		while (index_ < target) {
+			dispose(index_);
+			draw(++index_);
+		}
+	}
 
 	// Decodes frame i from the file onto the canvas; rows lost in a
 	// truncated file are left as they are.
@@ -217,6 +246,7 @@ private:
 	bool alpha_;
 	std::size_t index_ = 0;
 	unsigned loop_ = 0;
+	bool stale_ = false;  // the canvas is behind index_, see skip()
 	std::vector<std::uint8_t> rgb_, mask_, saved_rgb_, saved_mask_;
 	std::vector<GifByteType> line_;
 };

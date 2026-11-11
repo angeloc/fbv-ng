@@ -30,6 +30,16 @@ public:
 	std::vector<std::uint8_t> read(int x, int y, int w, int h) const;
 	void write(int x, int y, int w, int h, std::span<const std::uint8_t> rgb);
 
+	// A rectangle of the screen in the pixel format of the screen.
+	struct Pixels {
+		int x = 0, y = 0, w = 0, h = 0;
+		std::vector<std::uint8_t> data;
+	};
+	// The w x h RGB rectangle at x, y converted for the screen and clipped
+	// to it, to put() it later as many times as needed.
+	Pixels convert(int x, int y, int w, int h, std::span<const std::uint8_t> rgb) const;
+	void put(const Pixels &pixels);
+
 private:
 	struct Channel {
 		unsigned offset, length;

@@ -139,6 +139,20 @@ int main(int argc, char **argv)
 	CHECK(send("resume") == "ok");
 	CHECK(wait_frame(3) && wait_frame(0));
 
+	// A loop later every frame comes from the cache, the decoder skips them.
+	CHECK(wait_frame(1) && wait_frame(2) && wait_frame(3) && wait_frame(0) && wait_frame(1));
+	CHECK(send("pause") == "ok");
+	{
+		std::size_t frame = 0;
+		CHECK(std::sscanf(send("status").c_str(), "ok frame=%zu", &frame) == 1);
+		check_screen(fb, frame_of(anim, frame), "cached frame");
+	}
+	// Seeking rebuilds the frame the decoder skipped to.
+	CHECK(send("frame 2") == "ok");
+	check_screen(fb, frame_of(anim, 2), "frame 2 after the cache");
+	CHECK(send("pause") == "ok");
+	CHECK(send("resume") == "ok");
+
 	CHECK(send("frame 4") == "error frame out of range");
 	CHECK(send("frame 1.5").rfind("error ", 0) == 0);
 	CHECK(send("progress 101").rfind("error ", 0) == 0);

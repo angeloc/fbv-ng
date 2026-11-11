@@ -50,6 +50,10 @@ public:
 	// Advances to the next frame and stores it in out.
 	virtual void next(Image &out) = 0;
 
+	// Advances to the next frame without decoding it, for a caller that
+	// kept it from an earlier loop; the next frame decoded is rebuilt.
+	virtual void skip() = 0;
+
 	// Moves to the given frame and stores it in out, throws
 	// std::out_of_range for a frame past the end.
 	virtual void seek(std::size_t frame, Image &out) = 0;

@@ -211,21 +211,35 @@ std::vector<std::uint8_t> Framebuffer::read(int x, int y, int w, int h) const
 
 void Framebuffer::write(int x, int y, int w, int h, std::span<const std::uint8_t> rgb)
 {
+	put(convert(x, y, w, h, rgb));
+}
+
+Framebuffer::Pixels Framebuffer::convert(int x, int y, int w, int h, std::span<const std::uint8_t> rgb) const
+{
 	if (rgb.size() < static_cast<std::size_t>(std::max(w, 0)) * static_cast<std::size_t>(std::max(h, 0)) * 3)
 		throw std::invalid_argument("short pixel buffer");
 	const int src_x = x, src_y = y, src_w = w;
+	Pixels pixels;
 	if (!clip(x, y, w, h))
-		return;
+		return pixels;
 
-	std::vector<std::uint8_t> line(static_cast<std::size_t>(w) * bytes_per_pixel_);
+	pixels = {x, y, w, h, std::vector<std::uint8_t>(static_cast<std::size_t>(w) * static_cast<std::size_t>(h) * bytes_per_pixel_)};
+	std::uint8_t *out = pixels.data.data();
 	for (int j = 0; j < h; j++) {
 		const std::uint8_t *in = &rgb[(static_cast<std::size_t>(y - src_y + j) * static_cast<std::size_t>(src_w) +
 					      static_cast<std::size_t>(x - src_x)) * 3];
-		std::uint8_t *out = line.data();
 		for (int i = 0; i < w; i++, in += 3, out += bytes_per_pixel_)
 			store(out, pack(in), bytes_per_pixel_);
-		std::memcpy(row(y + j) + static_cast<std::size_t>(x) * bytes_per_pixel_, line.data(), line.size());
 	}
+	return pixels;
+}
+
+void Framebuffer::put(const Pixels &pixels)
+{
+	const std::size_t line = static_cast<std::size_t>(pixels.w) * bytes_per_pixel_;
+	for (int j = 0; j < pixels.h; j++)
+		std::memcpy(row(pixels.y + j) + static_cast<std::size_t>(pixels.x) * bytes_per_pixel_,
+			    &pixels.data[static_cast<std::size_t>(j) * line], line);
 	unblank();
 }
 

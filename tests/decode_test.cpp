@@ -60,6 +60,16 @@ int run(int argc, char **argv)
 			std::fprintf(stderr, "frame %zu: delay %ld ms, expected %d\n", i, delay, ref.delays[i]);
 		CHECK(delay == ref.delays[i]);
 	}
+
+	// A frame after skipped ones, also past the end of a loop, is rebuilt.
+	const std::size_t n = ref.frames.size();
+	for (std::size_t i = 1; n > 1 && i <= n; i++) {
+		Picture again = decode_file(argv[1]);
+		for (std::size_t j = 0; j + 1 < i; j++)
+			again.animation->skip();
+		again.animation->next(again.image);
+		compare(again.image, ref.frames[i % n], tolerance, i % n);
+	}
 	return check_result();
 }
 

@@ -42,7 +42,8 @@ public:
 	Navigation show(const std::string &path, const std::string &display_name);
 
 private:
-	void draw(const Image &img, int pan_x, int pan_y, int offs_x, int offs_y);
+	// img at its place on the screen, converted for it.
+	Framebuffer::Pixels render(const Image &img, int pan_x, int pan_y, int offs_x, int offs_y);
 
 	const Options &opt_;
 	Framebuffer &fb_;

@@ -8,6 +8,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <array>
 #include <optional>
 #include <poll.h>
 #include <unistd.h>
@@ -20,6 +21,9 @@ using Clock = std::chrono::steady_clock;
 using std::chrono::milliseconds;
 
 constexpr int pan_stepping = 20;
+
+// Memory for the frames of an animation kept as drawn on the screen.
+constexpr std::size_t max_cache_bytes = std::size_t{32} << 20;
 
 struct View {
 	bool shrink, cal, enlarge, ignore_aspect, width_only, height_only;
@@ -150,7 +154,7 @@ void clear_console()
 
 } // namespace
 
-void Viewer::draw(const Image &img, int pan_x, int pan_y, int offs_x, int offs_y)
+Framebuffer::Pixels Viewer::render(const Image &img, int pan_x, int pan_y, int offs_x, int offs_y)
 {
 	const int vw = std::min(img.width, fb_.width());
 	const int vh = std::min(img.height, fb_.height());
@@ -173,7 +177,7 @@ void Viewer::draw(const Image &img, int pan_x, int pan_y, int offs_x, int offs_y
 				out[d * 3 + c] = static_cast<std::uint8_t>(v);
 			}
 		}
-	fb_.write(offs_x, offs_y, vw, vh, out);
+	return fb_.convert(offs_x, offs_y, vw, vh, out);
 }
 
 Navigation Viewer::show(const std::string &path, const std::string &display_name)
@@ -201,6 +205,35 @@ Navigation Viewer::show(const std::string &path, const std::string &display_name
 	const auto delay_end = Clock::now() + milliseconds(delay * 100);
 	Clock::time_point frame_end;
 	const bool keys = term_.interactive() && !opt_.skip_tty;
+
+	// The frames of an animation as drawn, converted for the screen, so
+	// that the next loops just copy them, as long as they fit in
+	// max_cache_bytes; a change of view, place or background empties it.
+	std::vector<Framebuffer::Pixels> cache;
+	std::size_t cache_bytes = 0, cached = 0;
+	std::array<int, 4> cache_place{};  // pan_x, pan_y, offs_x, offs_y
+	bool frame_stale = false;          // frame is behind anim, see skip()
+	bool placed = false;               // background_ read again
+	std::optional<std::size_t> shown_for;  // the frame shown comes from
+	auto cache_clear = [&] {
+		cache.assign(anim ? anim->frame_count() : 0, Framebuffer::Pixels{});
+		cache_bytes = cached = 0;
+	};
+	auto cache_hit = [&] { return anim && !cache[anim->index()].data.empty(); };
+	// Transforms the current frame, decoding it first if it was skipped.
+	auto make_shown = [&] {
+		const std::size_t i = anim ? anim->index() : 0;
+		if (shown_for == i)
+			return;
+		if (frame_stale) {
+			anim->seek(i, frame);
+			if (!opt_.alpha)
+				frame.alpha.clear();
+			frame_stale = false;
+		}
+		shown = transform(frame, v, sw, sh);
+		shown_for = i;
+	};
 
 	auto stepping = [&] {
 		return anim && !paused && (target ? anim->index() != *target : anim->delay().count() > 0);
@@ -230,6 +263,9 @@ Navigation Viewer::show(const std::string &path, const std::string &display_name
 			}
 		}
 		retransform = refresh = place = true;
+		frame_stale = false;
+		shown_for.reset();
+		cache_clear();
 		paused = opt_.paused;
 		target.reset();
 		frame_end = Clock::now() + (stepping() ? step_delay() : milliseconds{});
@@ -237,6 +273,8 @@ Navigation Viewer::show(const std::string &path, const std::string &display_name
 
 	auto set_frame = [&](std::size_t n) {
 		anim->seek(n, frame);
+		frame_stale = false;
+		shown_for.reset();
 		if (!opt_.alpha)
 			frame.alpha.clear();
 		reframe = true;
@@ -328,7 +366,13 @@ Navigation Viewer::show(const std::string &path, const std::string &display_name
 			return Navigation::quit;
 
 		if (retransform || reframe) {
-			shown = transform(frame, v, sw, sh);
+			if (retransform) {
+				cache_clear();
+				shown_for.reset();
+			}
+			// All the frames of an animation have the size of the first.
+			if (!cache_hit())
+				make_shown();
 			offs_x = shown.width < sw ? (sw - shown.width) / 2 : 0;
 			offs_y = shown.height < sh ? (sh - shown.height) / 2 : 0;
 			pan_x = std::clamp(pan_x, 0, std::max(shown.width - sw, 0));
@@ -364,8 +408,26 @@ Navigation Viewer::show(const std::string &path, const std::string &display_name
 					background_ = fb_.read(offs_x, offs_y, std::min(shown.width, sw),
 							       std::min(shown.height, sh));
 				place = false;
+				placed = true;  // a new background
 			}
-			draw(shown, pan_x, pan_y, offs_x, offs_y);
+			const std::array<int, 4> now_place{pan_x, pan_y, offs_x, offs_y};
+			if (now_place != cache_place || placed) {
+				cache_clear();
+				cache_place = now_place;
+				placed = false;
+			}
+			if (cache_hit()) {
+				fb_.put(cache[anim->index()]);
+			} else {
+				make_shown();
+				Framebuffer::Pixels pixels = render(shown, pan_x, pan_y, offs_x, offs_y);
+				fb_.put(pixels);
+				if (anim && cache_bytes + pixels.data.size() <= max_cache_bytes) {
+					cache_bytes += pixels.data.size();
+					cache[anim->index()] = std::move(pixels);
+					cached++;
+				}
+			}
 			refresh = false;
 		}
 
@@ -410,7 +472,17 @@ Navigation Viewer::show(const std::string &path, const std::string &display_name
 				if (target && *target < anim->index())
 					set_frame(*target);
 				else {
-					anim->next(frame);
+					// With every frame cached, nothing to decode.
+					auto advance = [&] {
+						if (cached == anim->frame_count()) {
+							anim->skip();
+							frame_stale = true;
+						} else {
+							anim->next(frame);
+							frame_stale = false;
+						}
+					};
+					advance();
 					// Stepping to a target on a machine slower than the
 					// animation (a frame takes longer to draw than its
 					// delay): skip the frames there was no time to show,
@@ -418,7 +490,7 @@ Navigation Viewer::show(const std::string &path, const std::string &display_name
 					while (target && anim->index() != *target &&
 					       frame_end + anim->frame_delay() <= now) {
 						frame_end += anim->frame_delay();
-						anim->next(frame);
+						advance();
 					}
 					if (!opt_.alpha)
 						frame.alpha.clear();
