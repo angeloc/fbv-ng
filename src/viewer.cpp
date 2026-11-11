@@ -411,6 +411,15 @@ Navigation Viewer::show(const std::string &path, const std::string &display_name
 					set_frame(*target);
 				else {
 					anim->next(frame);
+					// Stepping to a target on a machine slower than the
+					// animation (a frame takes longer to draw than its
+					// delay): skip the frames there was no time to show,
+					// so that the animation keeps its pace.
+					while (target && anim->index() != *target &&
+					       frame_end + anim->frame_delay() <= now) {
+						frame_end += anim->frame_delay();
+						anim->next(frame);
+					}
 					if (!opt_.alpha)
 						frame.alpha.clear();
 					reframe = true;
