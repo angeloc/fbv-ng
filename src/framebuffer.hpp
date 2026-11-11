@@ -39,6 +39,7 @@ private:
 	void unpack(std::uint32_t pixel, std::uint8_t *rgb) const;
 	std::uint8_t *row(int y) const;
 	bool clip(int &x, int &y, int &w, int &h) const;
+	void unblank();
 
 	UniqueFd fd_;
 	fb_var_screeninfo var_{};
@@ -49,6 +50,7 @@ private:
 	Channel red_{}, green_{}, blue_{};
 	std::array<std::array<std::uint8_t, 256>, 3> scale_{};
 	bool restore_cmap_ = false;
+	bool unblanked_ = false;
 	std::array<std::array<std::uint16_t, 256>, 3> saved_cmap_{};
 };
 

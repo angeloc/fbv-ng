@@ -9,6 +9,7 @@
 #include <sys/ioctl.h>
 #include <sys/mman.h>
 #include <system_error>
+#include <unistd.h>
 
 namespace fbvng {
 
@@ -71,7 +72,6 @@ Framebuffer::Framebuffer(const std::string &device)
 		fail("FBIOGET_VSCREENINFO");
 	if (::ioctl(fd_.get(), FBIOGET_FSCREENINFO, &fix_) < 0)
 		fail("FBIOGET_FSCREENINFO");
-
 	switch (var_.bits_per_pixel) {
 	case 8:
 		bytes_per_pixel_ = 1;
@@ -226,6 +226,23 @@ void Framebuffer::write(int x, int y, int w, int h, std::span<const std::uint8_t
 			store(out, pack(in), bytes_per_pixel_);
 		std::memcpy(row(y + j) + static_cast<std::size_t>(x) * bytes_per_pixel_, line.data(), line.size());
 	}
+	unblank();
+}
+
+void Framebuffer::unblank()
+{
+	// Turns the display on, once there is a picture to show: the
+	// framebuffer console does it when there is one, nothing else does
+	// without it (e.g. a DRM driver leaves the display off), and a DRM
+	// driver sends the whole framebuffer to the display when turning it
+	// on. With deferred I/O (fbdev emulation of DRM) the picture reaches
+	// that framebuffer later, fsync() sends it there first. A driver that
+	// cannot blank refuses, that is fine.
+	if (unblanked_)
+		return;
+	unblanked_ = true;
+	(void)::fsync(fd_.get());
+	(void)::ioctl(fd_.get(), FBIOBLANK, FB_BLANK_UNBLANK);
 }
 
 } // namespace fbvng

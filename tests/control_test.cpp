@@ -6,6 +6,7 @@
 #include "fake_fb.hpp"
 
 #include <chrono>
+#include <fstream>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/un.h>
@@ -89,7 +90,9 @@ int main(int argc, char **argv)
 	socket_path = std::string(dir) + "/fbv.sock";
 
 	FakeFramebuffer fb(32);
-	const auto env = fb.environment(shim);
+	auto env = fb.environment(shim);
+	const std::string blank_log = std::string(dir) + "/blank";
+	env.push_back("FAKEFB_BLANK=" + blank_log);
 	const pid_t pid = spawn({fbv, "-y", "-i", "-c", "-u", "--control", socket_path, anim}, env);
 
 	bool up = false;
@@ -102,6 +105,13 @@ int main(int argc, char **argv)
 
 	struct stat st;
 	CHECK(::stat(socket_path.c_str(), &st) == 0 && (st.st_mode & 077) == 0);
+
+	// The display is turned on, also without a framebuffer console.
+	{
+		std::ifstream in(blank_log);
+		const std::string levels{std::istreambuf_iterator<char>(in), {}};
+		CHECK(levels == "0\n");
+	}
 
 	// A second instance must not take over the socket.
 	CHECK(wait_exit(spawn({fbv, "-y", "-i", "-c", "-u", "--control", socket_path, anim}, env)) == 1);

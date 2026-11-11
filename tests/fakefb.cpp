@@ -59,6 +59,14 @@ extern "C" int ioctl(int, unsigned long request, ...)
 	case FBIOGETCMAP:
 	case FBIOPUTCMAP:
 		return 0;
+	case FBIOBLANK:
+		// Logs the blank levels asked, in $FAKEFB_BLANK.
+		if (const char *log = std::getenv("FAKEFB_BLANK"))
+			if (FILE *f = std::fopen(log, "a")) {
+				std::fprintf(f, "%lu\n", reinterpret_cast<unsigned long>(arg));
+				std::fclose(f);
+			}
+		return 0;
 	default:
 		return -1;
 	}
