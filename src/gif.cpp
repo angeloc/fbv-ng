@@ -11,26 +11,59 @@ namespace fbvng {
 
 namespace {
 
-// Total indexed pixel data kept for one animation, and frames per file.
-constexpr std::size_t max_frame_bytes = std::size_t{512} << 20;
+// Frames per file.
 constexpr std::size_t max_frames = 65536;
 
+// A frame is decoded only when drawn, from its place in the file.
 struct Frame {
+	std::size_t offset = 0;  // of its image descriptor
 	// Rectangle clipped to the canvas.
 	int left = 0, top = 0, width = 0, height = 0;
-	std::vector<std::uint8_t> indices;
-	std::vector<std::uint8_t> row_valid;  // rows lost in a truncated file are 0
-	std::vector<std::uint8_t> palette;    // RGB triplets
 	int transparent = -1;
 	int disposal = 0;
 	int delay = 0;  // 1/100 s
 };
 
+struct Reader {
+	std::span<const std::uint8_t> data;
+	std::size_t pos = 0;
+};
+
+int read_input(GifFileType *gif, GifByteType *buf, int len)
+{
+	auto *r = static_cast<Reader *>(gif->UserData);
+	const std::size_t n = std::min(static_cast<std::size_t>(std::max(len, 0)), r->data.size() - r->pos);
+	std::memcpy(buf, r->data.data() + r->pos, n);
+	r->pos += n;
+	return static_cast<int>(n);
+}
+
+struct GifCloser {
+	void operator()(GifFileType *gif) const
+	{
+		int error;
+		DGifCloseFile(gif, &error);
+	}
+};
+
+std::vector<std::uint8_t> palette_of(const ColorMapObject *map)
+{
+	std::vector<std::uint8_t> palette;
+	if (!map || map->ColorCount <= 0 || map->ColorCount > 256)
+		return palette;
+	for (int i = 0; i < map->ColorCount; i++) {
+		palette.push_back(map->Colors[i].Red);
+		palette.push_back(map->Colors[i].Green);
+		palette.push_back(map->Colors[i].Blue);
+	}
+	return palette;
+}
+
 class GifAnimation final : public FrameSource {
 public:
-	GifAnimation(int width, int height, std::array<std::uint8_t, 3> background,
-		     std::vector<Frame> frames, unsigned loops, bool alpha)
-		: width_(width), height_(height), background_(background),
+	GifAnimation(std::span<const std::uint8_t> data, int width, int height,
+		     std::array<std::uint8_t, 3> background, std::vector<Frame> frames, unsigned loops, bool alpha)
+		: data_(data.begin(), data.end()), width_(width), height_(height), background_(background),
 		  frames_(std::move(frames)), loops_(loops), alpha_(alpha)
 	{
 		const auto pixels = static_cast<std::size_t>(width_) * static_cast<std::size_t>(height_);
@@ -115,6 +148,8 @@ private:
 
 	void reset() { fill(0, 0, width_, height_); }
 
+	// Decodes frame i from the file onto the canvas; rows lost in a
+	// truncated file are left as they are.
 	void draw(std::size_t i)
 	{
 		const Frame &f = frames_[i];
@@ -122,19 +157,43 @@ private:
 			saved_rgb_ = rgb_;
 			saved_mask_ = mask_;
 		}
-		const std::size_t colors = f.palette.size() / 3;
-		for (int y = 0; y < f.height; y++) {
-			if (!f.row_valid[static_cast<std::size_t>(y)])
-				continue;
-			const auto *src = &f.indices[static_cast<std::size_t>(y) * static_cast<std::size_t>(f.width)];
-			for (int x = 0; x < f.width; x++) {
-				const unsigned c = src[x];
-				if (static_cast<int>(c) == f.transparent || c >= colors)
+		Reader reader{data_};
+		int error = 0;
+		std::unique_ptr<GifFileType, GifCloser> gif(DGifOpen(&reader, read_input, &error));
+		if (!gif)
+			return;
+		reader.pos = f.offset;
+		GifRecordType type;
+		if (DGifGetRecordType(gif.get(), &type) == GIF_ERROR || type != IMAGE_DESC_RECORD_TYPE ||
+		    DGifGetImageDesc(gif.get()) == GIF_ERROR)
+			return;
+		const GifImageDesc &desc = gif->Image;
+		const auto palette = palette_of(desc.ColorMap ? desc.ColorMap : gif->SColorMap);
+		const std::size_t colors = palette.size() / 3;
+
+		static constexpr int start[] = {0, 4, 2, 1}, step[] = {8, 8, 4, 2};
+		const int passes = desc.Interlace ? 4 : 1;
+		line_.resize(static_cast<std::size_t>(desc.Width));
+		for (int pass = 0; pass < passes; pass++) {
+			const int first = desc.Interlace ? start[pass] : 0;
+			const int inc = desc.Interlace ? step[pass] : 1;
+			for (int y = first; y < desc.Height; y += inc) {
+				if (DGifGetLine(gif.get(), line_.data(), desc.Width) == GIF_ERROR)
+					return;
+				const int row = desc.Top + y - f.top;
+				if (row < 0 || row >= f.height || f.width <= 0)
 					continue;
-				const auto p = static_cast<std::size_t>(f.top + y) * static_cast<std::size_t>(width_) +
-					       static_cast<std::size_t>(f.left + x);
-				std::copy_n(&f.palette[c * 3], 3, &rgb_[p * 3]);
-				mask_[p] = 0xff;
+				const auto *src = &line_[static_cast<std::size_t>(f.left - desc.Left)];
+				for (int x = 0; x < f.width; x++) {
+					const unsigned c = src[x];
+					if (static_cast<int>(c) == f.transparent || c >= colors)
+						continue;
+					const auto p = static_cast<std::size_t>(f.top + row) *
+							       static_cast<std::size_t>(width_) +
+						       static_cast<std::size_t>(f.left + x);
+					std::copy_n(&palette[c * 3], 3, &rgb_[p * 3]);
+					mask_[p] = 0xff;
+				}
 			}
 		}
 	}
@@ -150,6 +209,7 @@ private:
 		}
 	}
 
+	std::vector<std::uint8_t> data_;  // the file
 	int width_, height_;
 	std::array<std::uint8_t, 3> background_;
 	std::vector<Frame> frames_;
@@ -158,42 +218,8 @@ private:
 	std::size_t index_ = 0;
 	unsigned loop_ = 0;
 	std::vector<std::uint8_t> rgb_, mask_, saved_rgb_, saved_mask_;
+	std::vector<GifByteType> line_;
 };
-
-struct Reader {
-	std::span<const std::uint8_t> data;
-	std::size_t pos = 0;
-};
-
-int read_input(GifFileType *gif, GifByteType *buf, int len)
-{
-	auto *r = static_cast<Reader *>(gif->UserData);
-	const std::size_t n = std::min(static_cast<std::size_t>(std::max(len, 0)), r->data.size() - r->pos);
-	std::memcpy(buf, r->data.data() + r->pos, n);
-	r->pos += n;
-	return static_cast<int>(n);
-}
-
-struct GifCloser {
-	void operator()(GifFileType *gif) const
-	{
-		int error;
-		DGifCloseFile(gif, &error);
-	}
-};
-
-std::vector<std::uint8_t> palette_of(const ColorMapObject *map)
-{
-	std::vector<std::uint8_t> palette;
-	if (!map || map->ColorCount <= 0 || map->ColorCount > 256)
-		return palette;
-	for (int i = 0; i < map->ColorCount; i++) {
-		palette.push_back(map->Colors[i].Red);
-		palette.push_back(map->Colors[i].Green);
-		palette.push_back(map->Colors[i].Blue);
-	}
-	return palette;
-}
 
 } // namespace
 
@@ -213,14 +239,14 @@ Picture decode_gif(std::span<const std::uint8_t> data)
 	if (static_cast<std::size_t>(gif->SBackGroundColor) * 3 + 2 < global.size())
 		std::copy_n(&global[static_cast<std::size_t>(gif->SBackGroundColor) * 3], 3, background.begin());
 
+	// Reads the frames' places and settings, skipping their pixels.
 	std::vector<Frame> frames;
-	std::size_t frame_bytes = 0;
 	unsigned loops = 1;
 	int transparent = -1, disposal = 0, delay = 0;
 	bool truncated = false;
-	std::vector<GifByteType> line;
 
 	for (bool done = false; !done && !truncated;) {
+		const std::size_t offset = reader.pos;
 		GifRecordType type;
 		if (DGifGetRecordType(gif.get(), &type) == GIF_ERROR) {
 			truncated = true;
@@ -270,43 +296,27 @@ Picture decode_gif(std::span<const std::uint8_t> data)
 				throw DecodeError("invalid GIF frame");
 
 			Frame f;
+			f.offset = offset;
 			f.left = std::min(desc.Left, width);
 			f.top = std::min(desc.Top, height);
 			f.width = std::min(desc.Left + desc.Width, width) - f.left;
 			f.height = std::min(desc.Top + desc.Height, height) - f.top;
-			const auto area = static_cast<std::size_t>(f.width) * static_cast<std::size_t>(f.height);
-			if (frames.size() == max_frames || frame_bytes + area > max_frame_bytes) {
+			if (frames.size() == max_frames) {
 				done = true;
 				break;
 			}
-			frame_bytes += area;
-			f.indices.resize(area);
-			f.row_valid.resize(static_cast<std::size_t>(f.height));
-			f.palette = palette_of(desc.ColorMap ? desc.ColorMap : gif->SColorMap);
 			f.transparent = transparent;
 			f.disposal = disposal;
 			f.delay = delay;
 
-			static constexpr int start[] = {0, 4, 2, 1}, step[] = {8, 8, 4, 2};
-			const int passes = desc.Interlace ? 4 : 1;
-			line.resize(static_cast<std::size_t>(desc.Width));
-			for (int pass = 0; pass < passes && !truncated; pass++) {
-				const int first = desc.Interlace ? start[pass] : 0;
-				const int inc = desc.Interlace ? step[pass] : 1;
-				for (int y = first; y < desc.Height; y += inc) {
-					if (DGifGetLine(gif.get(), line.data(), desc.Width) == GIF_ERROR) {
-						truncated = true;
-						break;
-					}
-					const int row = desc.Top + y - f.top;
-					if (row < 0 || row >= f.height || f.width <= 0)
-						continue;
-					std::copy_n(line.begin() + (f.left - desc.Left), f.width,
-						    f.indices.begin() + static_cast<std::ptrdiff_t>(row) * f.width);
-					f.row_valid[static_cast<std::size_t>(row)] = 1;
-				}
-			}
-			frames.push_back(std::move(f));
+			int code_size;
+			GifByteType *block;
+			if (DGifGetCode(gif.get(), &code_size, &block) == GIF_ERROR)
+				truncated = true;
+			while (!truncated && block)
+				if (DGifGetCodeNext(gif.get(), &block) == GIF_ERROR)
+					truncated = true;
+			frames.push_back(f);
 			transparent = -1;
 			disposal = 0;
 			delay = 0;
@@ -333,7 +343,7 @@ Picture decode_gif(std::span<const std::uint8_t> data)
 			   });
 
 	Picture pic;
-	auto anim = std::make_unique<GifAnimation>(width, height, background, std::move(frames), loops, alpha);
+	auto anim = std::make_unique<GifAnimation>(data, width, height, background, std::move(frames), loops, alpha);
 	anim->current(pic.image);
 	if (anim->delay().count())
 		pic.animation = std::move(anim);
