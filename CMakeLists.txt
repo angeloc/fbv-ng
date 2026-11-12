@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(fbv-ng VERSION 2.0.0 DESCRIPTION "Framebuffer image viewer" LANGUAGES CXX)
+project(fbv-ng VERSION 0.1.0 DESCRIPTION "Framebuffer image viewer" LANGUAGES CXX)
 
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
 	set(CMAKE_BUILD_TYPE RelWithDebInfo CACHE STRING "Build type" FORCE)
