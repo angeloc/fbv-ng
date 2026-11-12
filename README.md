@@ -1,4 +1,4 @@
-# fbv-ng
+<img src="docs/fbv-ng-logo.png" alt="FBV-NG: FrameBuffer Viewer Next Generation" width="100%">
 
 fbv-ng is an image viewer for the Linux framebuffer. It is a rewrite, in C++20, of
 [fbv](https://github.com/angeloc/fbv).
